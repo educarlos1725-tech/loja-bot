@@ -1,7 +1,6 @@
 require('dotenv').config();
 const fs = require('fs');
 const express = require('express');
-const mercadopago = require('mercadopago');
 const {
   Client,
   GatewayIntentBits,
@@ -13,6 +12,14 @@ const {
   REST,
   Routes
 } = require('discord.js');
+
+const { MercadoPagoConfig, Payment } = require('mercadopago');
+
+/* ========= MERCADO PAGO ========= */
+const mpClient = new MercadoPagoConfig({
+  accessToken: process.env.MP_TOKEN
+});
+const payment = new Payment(mpClient);
 
 /* ========= BANCO JSON ========= */
 const DB_FILE = 'database.json';
@@ -28,12 +35,7 @@ function writeDB(data) {
   fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 }
 
-/* ========= MERCADO PAGO ========= */
-mercadopago.configure({
-  access_token: process.env.MP_TOKEN
-});
-
-/* ========= WEB SERVER (Render precisa disso) ========= */
+/* ========= WEB SERVER (Render) ========= */
 const app = express();
 app.use(express.json());
 
@@ -86,10 +88,10 @@ app.post('/webhook', async (req, res) => {
   const id = req.body.data?.id;
   if (!id) return res.sendStatus(200);
 
-  const payment = await mercadopago.payment.findById(id);
+  const result = await payment.get({ id });
 
-  if (payment.body.status === 'approved') {
-    const produtoId = payment.body.external_reference;
+  if (result.status === 'approved') {
+    const produtoId = result.external_reference;
     const db = readDB();
 
     if (db.produtos[produtoId] && db.produtos[produtoId].estoque > 0) {
@@ -164,16 +166,18 @@ client.on('interactionCreate', async (interaction) => {
     const db = readDB();
     const produto = db.produtos[interaction.customId];
 
-    const pagamento = await mercadopago.payment.create({
-      transaction_amount: Number(produto.preco),
-      description: produto.nome,
-      payment_method_id: 'pix',
-      payer: { email: 'cliente@email.com' },
-      external_reference: interaction.customId
+    const pagamento = await payment.create({
+      body: {
+        transaction_amount: Number(produto.preco),
+        description: produto.nome,
+        payment_method_id: 'pix',
+        payer: { email: 'cliente@email.com' },
+        external_reference: interaction.customId
+      }
     });
 
-    const pix = pagamento.body.point_of_interaction.transaction_data.qr_code;
-    const qr = pagamento.body.point_of_interaction.transaction_data.qr_code_base64;
+    const pix = pagamento.point_of_interaction.transaction_data.qr_code;
+    const qr = pagamento.point_of_interaction.transaction_data.qr_code_base64;
 
     const embed = new EmbedBuilder()
       .setTitle(`Pague ${produto.nome}`)
