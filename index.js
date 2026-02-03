@@ -39,13 +39,8 @@ function writeDB(data) {
 const app = express();
 app.use(express.json());
 
-app.get('/', (req, res) => {
-  res.send('Bot online');
-});
-
-app.listen(3000, () => {
-  console.log('Web server ativo na porta 3000');
-});
+app.get('/', (req, res) => res.send('Bot online'));
+app.listen(3000, () => console.log('Web server porta 3000'));
 
 /* ========= DISCORD ========= */
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
@@ -59,16 +54,34 @@ const commands = [
   new SlashCommandBuilder()
     .setName('addproduto')
     .setDescription('Criar produto')
-    .addStringOption(o => o.setName('nome').setRequired(true))
-    .addIntegerOption(o => o.setName('preco').setRequired(true))
-    .addStringOption(o => o.setName('pix').setRequired(true))
-    .addStringOption(o => o.setName('imagem').setRequired(true)),
+    .addStringOption(o =>
+      o.setName('nome')
+        .setDescription('Nome do produto')
+        .setRequired(true))
+    .addIntegerOption(o =>
+      o.setName('preco')
+        .setDescription('Preço do produto')
+        .setRequired(true))
+    .addStringOption(o =>
+      o.setName('pix')
+        .setDescription('Chave pix')
+        .setRequired(true))
+    .addStringOption(o =>
+      o.setName('imagem')
+        .setDescription('URL da imagem')
+        .setRequired(true)),
 
   new SlashCommandBuilder()
     .setName('addestoque')
     .setDescription('Adicionar estoque')
-    .addStringOption(o => o.setName('id').setRequired(true))
-    .addIntegerOption(o => o.setName('qtd').setRequired(true)),
+    .addStringOption(o =>
+      o.setName('id')
+        .setDescription('ID do produto')
+        .setRequired(true))
+    .addIntegerOption(o =>
+      o.setName('qtd')
+        .setDescription('Quantidade')
+        .setRequired(true)),
 
   new SlashCommandBuilder()
     .setName('painel')
@@ -97,7 +110,7 @@ app.post('/webhook', async (req, res) => {
     if (db.produtos[produtoId] && db.produtos[produtoId].estoque > 0) {
       db.produtos[produtoId].estoque -= 1;
       writeDB(db);
-      console.log(`Venda confirmada: ${db.produtos[produtoId].nome}`);
+      console.log(`Venda aprovada: ${db.produtos[produtoId].nome}`);
     }
   }
 
@@ -122,8 +135,7 @@ client.on('interactionCreate', async (interaction) => {
       };
 
       writeDB(db);
-
-      return interaction.reply(`✅ Produto criado!\nID: ${id}`);
+      return interaction.reply(`✅ Produto criado! ID: ${id}`);
     }
 
     if (interaction.commandName === 'addestoque') {
@@ -134,7 +146,7 @@ client.on('interactionCreate', async (interaction) => {
       db.produtos[id].estoque += qtd;
       writeDB(db);
 
-      return interaction.reply(`📦 Estoque atualizado: ${db.produtos[id].estoque}`);
+      return interaction.reply(`📦 Estoque: ${db.produtos[id].estoque}`);
     }
 
     if (interaction.commandName === 'painel') {
