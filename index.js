@@ -1,9 +1,16 @@
 require('dotenv').config();
 const fs = require('fs');
+
+/* ===== SERVIDOR WEB (Render) ===== */
+const express = require('express');
+const app = express();
+app.get('/', (req,res)=> res.send('Bot online'));
+app.listen(3000, ()=> console.log('Web server porta 3000'));
+
+/* ===== DISCORD ===== */
 const {
   Client,
   GatewayIntentBits,
-  EmbedBuilder,
   ButtonBuilder,
   ActionRowBuilder,
   ButtonStyle,
@@ -33,7 +40,7 @@ function db(){
 function save(d){ fs.writeFileSync(DB, JSON.stringify(d,null,2)); }
 
 /* ===== COMANDO ADMIN ===== */
-client.on('ready', async ()=>{
+client.once('ready', async ()=>{
   console.log('Bot Admin ON');
 
   await client.application.commands.set([
@@ -45,20 +52,21 @@ client.on('ready', async ()=>{
 client.on('interactionCreate', async (i)=>{
   const data = db();
 
+  /* ===== /admin ===== */
   if(i.isChatInputCommand() && i.commandName==='admin'){
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('pix').setLabel('Alterar PIX').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId('visual').setLabel('Alterar Visual').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('visual').setLabel('Alterar Cor Embed').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('bot').setLabel('Alterar Bot').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('produto').setLabel('Gerenciar Produtos').setStyle(ButtonStyle.Danger)
+      new ButtonBuilder().setCustomId('produto').setLabel('Criar Produto').setStyle(ButtonStyle.Danger)
     );
 
     return i.reply({content:'⚙️ Painel Admin',components:[row],ephemeral:true});
   }
 
   /* ===== BOTÕES ===== */
-
   if(i.isButton()){
+
     if(i.customId==='pix'){
       const modal = new ModalBuilder()
         .setCustomId('modal_pix')
@@ -80,7 +88,7 @@ client.on('interactionCreate', async (i)=>{
     if(i.customId==='visual'){
       const modal = new ModalBuilder()
         .setCustomId('modal_visual')
-        .setTitle('Alterar cor do Embed');
+        .setTitle('Alterar Cor do Embed');
 
       modal.addComponents(
         new ActionRowBuilder().addComponents(
@@ -151,7 +159,6 @@ client.on('interactionCreate', async (i)=>{
   }
 
   /* ===== MODAIS ===== */
-
   if(i.isModalSubmit()){
 
     if(i.customId==='modal_pix'){
