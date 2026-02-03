@@ -1,4 +1,5 @@
 require('dotenv').config();
+const fs = require('fs');
 const express = require('express');
 const mercadopago = require('mercadopago');
 const {
@@ -12,16 +13,37 @@ const {
   REST,
   Routes
 } = require('discord.js');
-const { QuickDB } = require('quick.db');
 
-const db = new QuickDB();
-mercadopago.configure({ access_token: process.env.MP_TOKEN });
+/* ========= BANCO JSON ========= */
+const DB_FILE = 'database.json';
 
-/* ========= WEB SERVER (Render) ========= */
+function readDB() {
+  if (!fs.existsSync(DB_FILE)) {
+    fs.writeFileSync(DB_FILE, JSON.stringify({ produtos: {} }, null, 2));
+  }
+  return JSON.parse(fs.readFileSync(DB_FILE));
+}
+
+function writeDB(data) {
+  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+}
+
+/* ========= MERCADO PAGO ========= */
+mercadopago.configure({
+  access_token: process.env.MP_TOKEN
+});
+
+/* ========= WEB SERVER (Render precisa disso) ========= */
 const app = express();
 app.use(express.json());
-app.get('/', (req, res) => res.send('OK'));
-app.listen(3000, () => console.log('Web ok'));
+
+app.get('/', (req, res) => {
+  res.send('Bot online');
+});
+
+app.listen(3000, () => {
+  console.log('Web server ativo na porta 3000');
+});
 
 /* ========= DISCORD ========= */
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
@@ -65,15 +87,18 @@ app.post('/webhook', async (req, res) => {
   if (!id) return res.sendStatus(200);
 
   const payment = await mercadopago.payment.findById(id);
+
   if (payment.body.status === 'approved') {
     const produtoId = payment.body.external_reference;
-    let produto = await db.get(`produtos.${produtoId}`);
-    if (produto && produto.estoque > 0) {
-      produto.estoque -= 1;
-      await db.set(`produtos.${produtoId}`, produto);
-      console.log(`Venda confirmada: ${produto.nome}`);
+    const db = readDB();
+
+    if (db.produtos[produtoId] && db.produtos[produtoId].estoque > 0) {
+      db.produtos[produtoId].estoque -= 1;
+      writeDB(db);
+      console.log(`Venda confirmada: ${db.produtos[produtoId].nome}`);
     }
   }
+
   res.sendStatus(200);
 });
 
@@ -84,29 +109,37 @@ client.on('interactionCreate', async (interaction) => {
 
     if (interaction.commandName === 'addproduto') {
       const id = Date.now().toString();
-      await db.set(`produtos.${id}`, {
+      const db = readDB();
+
+      db.produtos[id] = {
         nome: interaction.options.getString('nome'),
         preco: interaction.options.getInteger('preco'),
         pix: interaction.options.getString('pix'),
         imagem: interaction.options.getString('imagem'),
         estoque: 0
-      });
+      };
+
+      writeDB(db);
+
       return interaction.reply(`✅ Produto criado!\nID: ${id}`);
     }
 
     if (interaction.commandName === 'addestoque') {
       const id = interaction.options.getString('id');
       const qtd = interaction.options.getInteger('qtd');
-      let p = await db.get(`produtos.${id}`);
-      p.estoque += qtd;
-      await db.set(`produtos.${id}`, p);
-      return interaction.reply(`📦 Estoque de ${p.nome}: ${p.estoque}`);
+      const db = readDB();
+
+      db.produtos[id].estoque += qtd;
+      writeDB(db);
+
+      return interaction.reply(`📦 Estoque atualizado: ${db.produtos[id].estoque}`);
     }
 
     if (interaction.commandName === 'painel') {
-      const produtos = await db.get('produtos') || {};
-      for (let id in produtos) {
-        const p = produtos[id];
+      const db = readDB();
+
+      for (let id in db.produtos) {
+        const p = db.produtos[id];
 
         const embed = new EmbedBuilder()
           .setTitle(p.nome)
@@ -122,13 +155,14 @@ client.on('interactionCreate', async (interaction) => {
 
         await interaction.channel.send({ embeds: [embed], components: [row] });
       }
-      return interaction.reply({ content: '🛒 Loja:', ephemeral: true });
+
+      return interaction.reply({ content: '🛒 Loja enviada!', ephemeral: true });
     }
   }
 
-  /* ========= BOTÃO COMPRAR ========= */
   if (interaction.isButton()) {
-    const produto = await db.get(`produtos.${interaction.customId}`);
+    const db = readDB();
+    const produto = db.produtos[interaction.customId];
 
     const pagamento = await mercadopago.payment.create({
       transaction_amount: Number(produto.preco),
@@ -152,13 +186,3 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 client.login(process.env.TOKEN);
-const express = require('express');
-const app = express();
-
-app.get('/', (req, res) => {
-  res.send('Bot online');
-});
-
-app.listen(3000, () => {
-  console.log('Web server ativo na porta 3000');
-});
