@@ -1,13 +1,13 @@
 require('dotenv').config();
 const fs = require('fs');
-
-/* ===== SERVIDOR WEB (Render) ===== */
 const express = require('express');
+
+/* ========= WEB SERVER RENDER ========= */
 const app = express();
 app.get('/', (req,res)=> res.send('Bot online'));
 app.listen(3000, ()=> console.log('Web server porta 3000'));
 
-/* ===== DISCORD ===== */
+/* ========= DISCORD ========= */
 const {
   Client,
   GatewayIntentBits,
@@ -21,7 +21,7 @@ const {
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-/* ===== BANCO ===== */
+/* ========= BANCO ========= */
 const DB = 'db.json';
 function db(){
   if(!fs.existsSync(DB)){
@@ -39,7 +39,7 @@ function db(){
 }
 function save(d){ fs.writeFileSync(DB, JSON.stringify(d,null,2)); }
 
-/* ===== COMANDO ADMIN ===== */
+/* ========= REGISTRAR /admin ========= */
 client.once('ready', async ()=>{
   console.log('Bot Admin ON');
 
@@ -48,12 +48,14 @@ client.once('ready', async ()=>{
   ]);
 });
 
-/* ===== INTERAÇÕES ===== */
+/* ========= INTERAÇÕES ========= */
 client.on('interactionCreate', async (i)=>{
   const data = db();
 
   /* ===== /admin ===== */
   if(i.isChatInputCommand() && i.commandName==='admin'){
+    await i.deferReply({ephemeral:true});
+
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('pix').setLabel('Alterar PIX').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('visual').setLabel('Alterar Cor Embed').setStyle(ButtonStyle.Secondary),
@@ -61,7 +63,7 @@ client.on('interactionCreate', async (i)=>{
       new ButtonBuilder().setCustomId('produto').setLabel('Criar Produto').setStyle(ButtonStyle.Danger)
     );
 
-    return i.reply({content:'⚙️ Painel Admin',components:[row],ephemeral:true});
+    return i.editReply({content:'⚙️ Painel Admin',components:[row]});
   }
 
   /* ===== BOTÕES ===== */
