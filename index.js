@@ -15,13 +15,11 @@ const {
 
 const { MercadoPagoConfig, Payment } = require('mercadopago');
 
-/* ========= MERCADO PAGO ========= */
 const mpClient = new MercadoPagoConfig({
   accessToken: process.env.MP_TOKEN
 });
 const payment = new Payment(mpClient);
 
-/* ========= BANCO JSON ========= */
 const DB_FILE = 'database.json';
 
 function readDB() {
@@ -35,52 +33,32 @@ function writeDB(data) {
   fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 }
 
-/* ========= WEB SERVER (Render) ========= */
 const app = express();
 app.use(express.json());
+app.get('/', (req, res) => res.send('OK'));
+app.listen(3000);
 
-app.get('/', (req, res) => res.send('Bot online'));
-app.listen(3000, () => console.log('Web server porta 3000'));
-
-/* ========= DISCORD ========= */
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 client.once('ready', () => {
-  console.log(`Logado como ${client.user.tag}`);
+  console.log('Bot online');
 });
 
-/* ========= SLASH COMMANDS ========= */
 const commands = [
   new SlashCommandBuilder()
     .setName('addproduto')
     .setDescription('Criar produto')
     .addStringOption(o =>
       o.setName('nome')
-        .setDescription('Nome do produto')
+        .setDescription('Nome')
         .setRequired(true))
     .addIntegerOption(o =>
       o.setName('preco')
-        .setDescription('Preço do produto')
-        .setRequired(true))
-    .addStringOption(o =>
-      o.setName('pix')
-        .setDescription('Chave pix')
+        .setDescription('Preço')
         .setRequired(true))
     .addStringOption(o =>
       o.setName('imagem')
-        .setDescription('URL da imagem')
-        .setRequired(true)),
-
-  new SlashCommandBuilder()
-    .setName('addestoque')
-    .setDescription('Adicionar estoque')
-    .addStringOption(o =>
-      o.setName('id')
-        .setDescription('ID do produto')
-        .setRequired(true))
-    .addIntegerOption(o =>
-      o.setName('qtd')
-        .setDescription('Quantidade')
+        .setDescription('Imagem')
         .setRequired(true)),
 
   new SlashCommandBuilder()
@@ -96,60 +74,24 @@ const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
   );
 })();
 
-/* ========= WEBHOOK MERCADO PAGO ========= */
-app.post('/webhook', async (req, res) => {
-  const id = req.body.data?.id;
-  if (!id) return res.sendStatus(200);
+client.on('interactionCreate', async (i) => {
+  if (i.isChatInputCommand()) {
 
-  const result = await payment.get({ id });
-
-  if (result.status === 'approved') {
-    const produtoId = result.external_reference;
-    const db = readDB();
-
-    if (db.produtos[produtoId] && db.produtos[produtoId].estoque > 0) {
-      db.produtos[produtoId].estoque -= 1;
-      writeDB(db);
-      console.log(`Venda aprovada: ${db.produtos[produtoId].nome}`);
-    }
-  }
-
-  res.sendStatus(200);
-});
-
-/* ========= INTERAÇÕES ========= */
-client.on('interactionCreate', async (interaction) => {
-
-  if (interaction.isChatInputCommand()) {
-
-    if (interaction.commandName === 'addproduto') {
-      const id = Date.now().toString();
+    if (i.commandName === 'addproduto') {
       const db = readDB();
+      const id = Date.now().toString();
 
       db.produtos[id] = {
-        nome: interaction.options.getString('nome'),
-        preco: interaction.options.getInteger('preco'),
-        pix: interaction.options.getString('pix'),
-        imagem: interaction.options.getString('imagem'),
-        estoque: 0
+        nome: i.options.getString('nome'),
+        preco: i.options.getInteger('preco'),
+        imagem: i.options.getString('imagem')
       };
 
       writeDB(db);
-      return interaction.reply(`✅ Produto criado! ID: ${id}`);
+      return i.reply('Produto criado');
     }
 
-    if (interaction.commandName === 'addestoque') {
-      const id = interaction.options.getString('id');
-      const qtd = interaction.options.getInteger('qtd');
-      const db = readDB();
-
-      db.produtos[id].estoque += qtd;
-      writeDB(db);
-
-      return interaction.reply(`📦 Estoque: ${db.produtos[id].estoque}`);
-    }
-
-    if (interaction.commandName === 'painel') {
+    if (i.commandName === 'painel') {
       const db = readDB();
 
       for (let id in db.produtos) {
@@ -157,48 +99,15 @@ client.on('interactionCreate', async (interaction) => {
 
         const embed = new EmbedBuilder()
           .setTitle(p.nome)
-          .setDescription(`💰 R$${p.preco}\n📦 Estoque: ${p.estoque}`)
+          .setDescription(`R$ ${p.preco}`)
           .setImage(p.imagem);
 
-        const botao = new ButtonBuilder()
-          .setCustomId(id)
-          .setLabel('Comprar')
-          .setStyle(ButtonStyle.Success);
-
-        const row = new ActionRowBuilder().addComponents(botao);
-
-        await interaction.channel.send({ embeds: [embed], components: [row] });
+        await i.channel.send({ embeds: [embed] });
       }
 
-      return interaction.reply({ content: '🛒 Loja enviada!', ephemeral: true });
+      return i.reply({ content: 'Loja enviada', ephemeral: true });
     }
   }
-
-  if (interaction.isButton()) {
-    const db = readDB();
-    const produto = db.produtos[interaction.customId];
-
-    const pagamento = await payment.create({
-      body: {
-        transaction_amount: Number(produto.preco),
-        description: produto.nome,
-        payment_method_id: 'pix',
-        payer: { email: 'cliente@email.com' },
-        external_reference: interaction.customId
-      }
-    });
-
-    const pix = pagamento.point_of_interaction.transaction_data.qr_code;
-    const qr = pagamento.point_of_interaction.transaction_data.qr_code_base64;
-
-    const embed = new EmbedBuilder()
-      .setTitle(`Pague ${produto.nome}`)
-      .setDescription(`PIX copia e cola:\n${pix}`)
-      .setImage(`data:image/png;base64,${qr}`);
-
-    await interaction.reply({ embeds: [embed], ephemeral: true });
-  }
-
 });
 
 client.login(process.env.TOKEN);
